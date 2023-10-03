@@ -23,21 +23,22 @@ class FP_bot:
 
         indexes = [i for i, x in enumerate(self.summaries.col_values(6)) if x == date]
         for ind in indexes:
-            list_of_completed_students_emails.append(self.summaries.row_values(ind + 1)[3])
+            list_of_completed_students_emails.append(self.summaries.row_values(ind + 1)[3].lower())
 
         return list_of_completed_students_emails
 
     def missing_students_emails(self, date):
-        row_num = self.attendance.col_values(2).index(date)
+        row_num = self.attendance.col_values(2).index(date) + 1
         all_students = self.attendance.col_values(8)
 
         present_students = self.attendance.cell(row_num, 3).value.split(", ")
         missing_students = list(set(all_students) - set(present_students) - {""})
 
+
         missing_students_emails = []
         for student in missing_students:
             index = self.attendance.col_values(8).index(student)
-            missing_students_emails.append(self.attendance.col_values(7)[index])
+            missing_students_emails.append(self.attendance.col_values(7)[index].lower())
 
         return missing_students_emails
 
@@ -72,14 +73,15 @@ class FP_bot:
     def send_emails_loop(self, emails, date):
         for email in emails:
             print(email, date)
-            self.send_email("mikey.talpalar@gmail.com", date, "")
+            self.send_email(email, date, "")
 
     def run(self):
         self.google_sheets_reading_date()
         last_week_to_emails = list(set(self.missing_students_emails(self.last_week)) - set(self.completed_students_emails(self.last_week)))
-        this_week_to_emails = list(set(self.missing_students_emails(self.this_week)) - set(self.completed_students_emails(self.this_week)))
+        # this_week_to_emails = list(set(self.missing_students_emails(self.this_week)) - set(self.completed_students_emails(self.this_week)))
+
         self.send_emails_loop(last_week_to_emails, self.last_week)
-        self.send_emails_loop(this_week_to_emails, self.this_week)
+        # self.send_emails_loop(this_week_to_emails, self.this_week)
 
 
 if __name__ == "__main__":
