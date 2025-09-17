@@ -80,12 +80,12 @@ class FP_bot:
         """Get student name by email address"""
         try:
             # Get all emails from column 7
-            all_emails = self.attendance.col_values(7)
+            all_emails = [email.lower() for email in self.attendance.col_values(7)]
             # Get all names from column 8
             all_names = self.attendance.col_values(8)
             
             # Find the index of the email
-            if email in all_emails:
+            if email.lower() in all_emails:
                 index = all_emails.index(email)
                 if index < len(all_names):
                     return all_names[index]
@@ -93,15 +93,24 @@ class FP_bot:
         except Exception:
             return "Unknown"
 
-    def send_email(self, to_email, date, password):
+    def send_email(self, to_email, date):
+        """
+        ---- FOR NOW DON'T USE ----
+        Send a summary reminder email to students who missed a previous class 
+        but haven't submitted their class summary yet.
+        
+        This is a follow-up reminder sent to students who were absent from a class
+        and still need to submit their summary before attending the next class.
+        """
         # gmail-generated 16-digit password
         link_to_form = os.getenv('FORM_LINK', "https://docs.google.com/forms/d/e/1FAIpQLSexjnmtLgWdfkMYsg1l7jQLNL3x1EAyEDv-1zybspIL8JvrDQ/viewform")
         from_email = os.getenv('FROM_EMAIL', "epc@meditationintelaviv.org")
+        name = self._get_student_name_by_email(to_email)
 
-        subject = f"A reminder for sending a summary for the {date} class"
-        body = (f"Hey there :-) \nWe would like to kindly remind you to send a class summary (for {date}) before the upcoming class so"
-                f" that you could attend it normally.\n\n"
-                f"{link_to_form}\n\n\nLove,\nMikey")
+        subject = f"תזכורת לשליחת סיכום לשיעור {date}"
+        body = (f"שלום {name} :-) \nאנחנו רוצים להזכיר לך בעדינות לשלוח סיכום שיעור (עבור {date}) לפני השיעור הבא כדי"
+                f" שתוכל להשתתף בו כרגיל.\n\n"
+                f"{link_to_form}\n\n\nבאהבה,\nמיקי")
 
         if self.debug_mode:
             print("=" * 60)
@@ -124,7 +133,7 @@ class FP_bot:
         try:
             server = smtplib.SMTP("smtp.gmail.com", 587)
             server.starttls()
-            server.login(from_email, password)
+            server.login(from_email, os.getenv('GMAIL_PASSWORD'))
             server.send_message(message)
             print("Email sent successfully!")
         except Exception as e:
@@ -132,41 +141,45 @@ class FP_bot:
         finally:
             server.quit()
 
-    def send_missed_class_reminder(self, to_email, date, password):
+    def send_missed_class_reminder(self, to_email, date):
+        """
+        Send a missed class reminder email to students who just missed a class.
+        
+        This is an immediate notification sent to students who were absent from 
+        yesterday's class, providing them with class materials and summary form 
+        to help them catch up before the next class.
+        """
         # gmail-generated 16-digit password
         link_to_form = os.getenv('FORM_LINK', "https://docs.google.com/forms/d/e/1FAIpQLSexjnmtLgWdfkMYsg1l7jQLNL3x1EAyEDv-1zybspIL8JvrDQ/viewform")
-        dropbox_link = os.getenv('DROPBOX_LINK', "YOUR_DROPBOX_LINK_HERE")  # Set in .env file
+        dropbox_link = os.getenv('DROPBOX_LINK', "")
         from_email = os.getenv('FROM_EMAIL', "epc@meditationintelaviv.org")
+        name = self._get_student_name_by_email(to_email)
 
-        subject = f"Class materials and summary form for {date}"
-        body = (f"Hey there :-) \nWe noticed you missed yesterday's class ({date}). Here are the class materials and summary form to help you catch up:\n\n"
-                f"Class materials: {dropbox_link}\n"
-                f"Summary submission form: {link_to_form}\n\n"
-                f"Please review the materials and submit your summary before the next class.\n\n"
-                f"Love,\nMikey")
+        subject = f"השלמת שיעור קדמפה FP"
+        body = (
+            f'<div dir="rtl" style="text-align:right; font-family:Arial, sans-serif;">'
+            f'שלום {name} :-)<br>'
+            f'שמנו לב שפספסת את השיעור האחרון ({date}). הנה הקלטת השיעור וטופס הסיכום שיעזרו לך להשלים:<br><br>'
+            f'<b>הקלטת השיעור:</b> <a href="{dropbox_link}">{dropbox_link}</a><br>'
+            f'<b>טופס הגשת סיכום:</b> <a href="{link_to_form}">{link_to_form}</a><br><br>'
+            f'אנא עיין בחומרים והגש את הסיכום שלך לפני השיעור הבא.<br><br>'
+            f'באהבה,<br>קדמפה בוט 🤖'
+            f'</div>'
+        )
 
         if self.debug_mode:
-            print("=" * 60)
-            print("DEBUG MODE - MISSED CLASS REMINDER EMAIL")
-            print("=" * 60)
-            print(f"To: {to_email}")
-            print(f"From: FP Kadampa TLV <{from_email}>")
-            print(f"Subject: {subject}")
-            print("-" * 40)
-            print("Body:")
-            print(body)
-            print("=" * 60)
+            print(f"would send missed class reminder to: {to_email}")
             return
 
         message = MIMEMultipart()
         message["From"] = f"FP Kadampa TLV <{from_email}>"
         message["To"] = to_email
         message["Subject"] = subject
-        message.attach(MIMEText(body, "plain"))
+        message.attach(MIMEText(body, "html"))
         try:
             server = smtplib.SMTP("smtp.gmail.com", 587)
             server.starttls()
-            server.login(from_email, password)
+            server.login(from_email, os.getenv('GMAIL_PASSWORD'))
             server.send_message(message)
             print("Missed class reminder sent successfully!")
         except Exception as e:
@@ -181,7 +194,7 @@ class FP_bot:
                 print(f"Sending summary reminder to {name} ({email}) for {date}")
             else:
                 print(email, date)
-            self.send_email(email, date, "")
+                self.send_email(email, date)
 
     def send_missed_class_reminders_loop(self, emails, date):
         for email in emails:
@@ -190,7 +203,80 @@ class FP_bot:
                 print(f"Sending missed class reminder to {name} ({email}) for {date}")
             else:
                 print(f"Sending missed class reminder to {email} for {date}")
-            self.send_missed_class_reminder(email, date, "")
+            self.send_missed_class_reminder(email, date)
+
+    def send_admin_summary(self, missed_class_emails, summary_reminder_emails):
+        """
+        Send a summary email to the admin with details about all emails sent.
+        
+        This provides the admin with a complete overview of which students
+        received missed class reminders and summary reminders.
+        """
+        admin_email = os.getenv('ADMIN_EMAIL')
+        if not admin_email:
+            print("⚠️ ADMIN_EMAIL not set in environment variables - skipping admin summary")
+            return
+            
+        from_email = os.getenv('FROM_EMAIL', "epc@meditationintelaviv.org")
+        
+        subject = f"📊 סיכום שליחת הודעות - {self.this_week}"
+        
+        # Build the summary content
+        summary_content = f"שלום,\n\nהנה סיכום שליחת ההודעות עבור {self.this_week}:\n\n"
+        
+        # Missed class reminders section
+        summary_content += f"📧 הודעות על שיעור חסר ({self.this_week}): {len(missed_class_emails)}\n"
+        if missed_class_emails:
+            for email in missed_class_emails:
+                name = self._get_student_name_by_email(email)
+                summary_content += f"   - {name} ({email})\n"
+        else:
+            summary_content += "   - אין תלמידים שפספסו את השיעור\n"
+        
+        summary_content += "\n"
+        
+        # Summary reminders section
+        '''
+        summary_content += f"📧 תזכורות סיכום ({self.last_week}): {len(summary_reminder_emails)}\n"
+        if summary_reminder_emails:
+            for email in summary_reminder_emails:
+                name = self._get_student_name_by_email(email)
+                summary_content += f"   - {name} ({email})\n"
+        else:
+            summary_content += "   - אין תלמידים שצריכים תזכורת לסיכום\n"
+        
+        summary_content += f"\nסה\"כ הודעות שנשלחו: {len(missed_class_emails) + len(summary_reminder_emails)}\n\n"
+        summary_content += "בברכה,\nקדמפה בוט 🤖"
+        
+        if self.debug_mode:
+            print("=" * 60)
+            print("DEBUG MODE - ADMIN SUMMARY EMAIL")
+            print("=" * 60)
+            print(f"To: {admin_email}")
+            print(f"From: FP Kadampa TLV <{from_email}>")
+            print(f"Subject: {subject}")
+            print("-" * 40)
+            print("Body:")
+            print(summary_content)
+            print("=" * 60)
+            return
+        '''
+        message = MIMEMultipart()
+        message["From"] = f"FP Kadampa TLV <{from_email}>"
+        message["To"] = admin_email
+        message["Subject"] = subject
+        message.attach(MIMEText(summary_content, "plain"))
+        
+        try:
+            server = smtplib.SMTP("smtp.gmail.com", 587)
+            server.starttls()
+            server.login(from_email, os.getenv('GMAIL_PASSWORD'))
+            server.send_message(message)
+            print("Admin summary sent successfully!")
+        except Exception as e:
+            print(f"Error sending admin summary: {e}")
+        finally:
+            server.quit()
 
     def run(self):
         self.google_sheets_reading_date()
@@ -221,8 +307,12 @@ class FP_bot:
         # Send missed class reminders (day after class) - no need to check if summary was submitted
         self.send_missed_class_reminders_loop(this_week_missing_emails, self.this_week)
         
+        
         # Send summary reminders for last week (only to those who haven't submitted)
-        self.send_emails_loop(last_week_to_emails, self.last_week)
+        # self.send_emails_loop(last_week_to_emails, self.last_week)
+        
+        # Send admin summary after all student emails are sent
+        self.send_admin_summary(this_week_missing_emails, last_week_to_emails)
 
 
 if __name__ == "__main__":
