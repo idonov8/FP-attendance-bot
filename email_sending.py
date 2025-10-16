@@ -5,6 +5,7 @@ from email.mime.multipart import MIMEMultipart
 import gspread
 import os
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
@@ -51,6 +52,56 @@ class FP_bot:
     def google_sheets_reading_date(self):
         self.this_week = self.attendance.col_values(2)[-1]
         self.last_week = self.attendance.col_values(2)[-2]
+
+    def validate_recent_class(self):
+        """
+        Validate that the this_week class date is within the last 7 days.
+        Returns True if valid, False otherwise.
+        """
+        if not self.this_week:
+            return False
+            
+        try:
+            # Parse the date string (assuming format like "2024-01-15" or similar)
+            # Try different common date formats
+            date_formats = [
+                "%Y-%m-%d",      # 2024-01-15
+                "%d/%m/%Y",      # 15/01/2024
+                "%m/%d/%Y",      # 01/15/2024
+                "%d-%m-%Y",      # 15-01-2024
+                "%Y/%m/%d",      # 2024/01/15
+            ]
+            
+            class_date = None
+            for fmt in date_formats:
+                try:
+                    class_date = datetime.strptime(self.this_week, fmt).date()
+                    break
+                except ValueError:
+                    continue
+            
+            if class_date is None:
+                print(f"❌ Unable to parse date format: {self.this_week}")
+                return False
+            
+            # Check if the class date is within the last 7 days
+            seven_days_ago = datetime.now().date() - timedelta(days=7)
+            today = datetime.now().date()
+            
+            if self.debug_mode:
+                print(f"📅 Class date: {class_date}")
+                print(f"📅 7 days ago: {seven_days_ago}")
+                print(f"📅 Today: {today}")
+            
+            # Class should be between 7 days ago and today (inclusive)
+            if seven_days_ago <= class_date <= today:
+                return True
+            else:
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error validating class date: {e}")
+            return False
 
     def completed_students_emails(self, date):
         list_of_completed_students_emails = []
@@ -285,6 +336,12 @@ class FP_bot:
             print(f"📅 Current week: {self.this_week}")
             print(f"📅 Last week: {self.last_week}")
             print()
+        
+        # Validate that there was a class in the last 7 days
+        if not self.validate_recent_class():
+            print("❌ There was no class in the last week, or I'm missing some data")
+            print("Last data is from: ", self.this_week)
+            return
         
         last_week_to_emails = list(set(self.missing_students_emails(self.last_week)) - set(self.completed_students_emails(self.last_week)))
         this_week_missing_emails = self.missing_students_emails(self.this_week)
