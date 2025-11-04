@@ -28,12 +28,12 @@ jobs:
       - name: Create .env file
         run: |
           cat > .env << EOF
-          SPREADSHEET_URL=${{ env.SPREADSHEET_URL }}
-          FROM_EMAIL=${{ env.FROM_EMAIL }}
+          SPREADSHEET_URL=${{ vars.SPREADSHEET_URL }}
+          FROM_EMAIL=${{ vars.FROM_EMAIL }}
           GMAIL_PASSWORD=${{ secrets.GMAIL_PASSWORD }}
-          FORM_LINK=${{ env.FORM_LINK }}
-          DROPBOX_LINK=${{ env.DROPBOX_LINK }}
-          ADMIN_EMAIL=${{ env.ADMIN_EMAIL }}
+          FORM_LINK=${{ vars.FORM_LINK }}
+          DROPBOX_LINK=${{ vars.DROPBOX_LINK }}
+          ADMIN_EMAIL=${{ vars.ADMIN_EMAIL }}
           EOF
       
       - name: Create service account file
