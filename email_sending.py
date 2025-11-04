@@ -32,7 +32,13 @@ class FP_bot:
         
         try:
             # Try to use service account first
-            self.sa = gspread.service_account()
+            # Check for service account file in current directory or default location
+            service_account_path = 'service_account.json'
+            if os.path.exists(service_account_path):
+                self.sa = gspread.service_account(filename=service_account_path)
+            else:
+                # Fall back to default location (~/.config/gspread/service_account.json)
+                self.sa = gspread.service_account()
             self.sh = self.sa.open_by_key(sheet_id)
             if self.debug_mode:
                 self._log(f"✅ Connected to Google Sheet: {self.sh.title}")
