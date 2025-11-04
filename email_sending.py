@@ -6,6 +6,8 @@ import gspread
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+import sys
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +21,7 @@ class FP_bot:
             raise ValueError("SPREADSHEET_URL must be set in .env file")
         
         self.debug_mode = debug_mode
+        self.logs = []  # Store all execution logs
         
         # Extract sheet ID from URL
         # URL format: https://docs.google.com/spreadsheets/d/SHEET_ID/edit
@@ -32,22 +35,29 @@ class FP_bot:
             self.sa = gspread.service_account()
             self.sh = self.sa.open_by_key(sheet_id)
             if self.debug_mode:
-                print(f"✅ Connected to Google Sheet: {self.sh.title}")
+                self._log(f"✅ Connected to Google Sheet: {self.sh.title}")
         except FileNotFoundError:
-            print("❌ Service account not found. Please set up authentication:")
-            print("1. Go to Google Cloud Console")
-            print("2. Create a service account and download the JSON key")
-            print("3. Save it as 'service_account.json' in this directory")
-            print("4. Share your Google Sheet with the service account email")
+            self._log("❌ Service account not found. Please set up authentication:")
+            self._log("1. Go to Google Cloud Console")
+            self._log("2. Create a service account and download the JSON key")
+            self._log("3. Save it as 'service_account.json' in this directory")
+            self._log("4. Share your Google Sheet with the service account email")
             raise ValueError("Service account required for Google Sheets access")
         except Exception as e:
-            print(f"❌ Error connecting to Google Sheets: {e}")
+            self._log(f"❌ Error connecting to Google Sheets: {e}")
             raise
         
         self.summaries = self.sh.worksheet("Form Responses 1")
         self.attendance = self.sh.worksheet("Form Responses 2")
         self.this_week = ''
         self.last_week = ''
+    
+    def _log(self, message):
+        """Log a message and also print it"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp}] {message}"
+        self.logs.append(log_entry)
+        print(message)
 
     def google_sheets_reading_date(self):
         self.this_week = self.attendance.col_values(2)[-1]
@@ -81,7 +91,7 @@ class FP_bot:
                     continue
             
             if class_date is None:
-                print(f"❌ Unable to parse date format: {self.this_week}")
+                self._log(f"❌ Unable to parse date format: {self.this_week}")
                 return False
             
             # Check if the class date is within the last 7 days
@@ -89,9 +99,9 @@ class FP_bot:
             today = datetime.now().date()
             
             if self.debug_mode:
-                print(f"📅 Class date: {class_date}")
-                print(f"📅 7 days ago: {seven_days_ago}")
-                print(f"📅 Today: {today}")
+                self._log(f"📅 Class date: {class_date}")
+                self._log(f"📅 7 days ago: {seven_days_ago}")
+                self._log(f"📅 Today: {today}")
             
             # Class should be between 7 days ago and today (inclusive)
             if seven_days_ago <= class_date <= today:
@@ -100,7 +110,7 @@ class FP_bot:
                 return False
                 
         except Exception as e:
-            print(f"❌ Error validating class date: {e}")
+            self._log(f"❌ Error validating class date: {e}")
             return False
 
     def completed_students_emails(self, date):
@@ -164,16 +174,16 @@ class FP_bot:
                 f"{link_to_form}\n\n\nבאהבה,\nמיקי")
 
         if self.debug_mode:
-            print("=" * 60)
-            print("DEBUG MODE - SUMMARY REMINDER EMAIL")
-            print("=" * 60)
-            print(f"To: {to_email}")
-            print(f"From: FP Kadampa TLV <{from_email}>")
-            print(f"Subject: {subject}")
-            print("-" * 40)
-            print("Body:")
-            print(body)
-            print("=" * 60)
+            self._log("=" * 60)
+            self._log("DEBUG MODE - SUMMARY REMINDER EMAIL")
+            self._log("=" * 60)
+            self._log(f"To: {to_email}")
+            self._log(f"From: FP Kadampa TLV <{from_email}>")
+            self._log(f"Subject: {subject}")
+            self._log("-" * 40)
+            self._log("Body:")
+            self._log(body)
+            self._log("=" * 60)
             return
 
         message = MIMEMultipart()
@@ -186,9 +196,9 @@ class FP_bot:
             server.starttls()
             server.login(from_email, os.getenv('GMAIL_PASSWORD'))
             server.send_message(message)
-            print("Email sent successfully!")
+            self._log(f"✅ Email sent successfully to {to_email}!")
         except Exception as e:
-            print(f"Error sending email: {e}")
+            self._log(f"❌ Error sending email to {to_email}: {e}")
         finally:
             server.quit()
 
@@ -219,7 +229,7 @@ class FP_bot:
         )
 
         if self.debug_mode:
-            print(f"would send missed class reminder to: {to_email}")
+            self._log(f"would send missed class reminder to: {to_email}")
             return
 
         message = MIMEMultipart()
@@ -232,9 +242,9 @@ class FP_bot:
             server.starttls()
             server.login(from_email, os.getenv('GMAIL_PASSWORD'))
             server.send_message(message)
-            print("Missed class reminder sent successfully!")
+            self._log(f"✅ Missed class reminder sent successfully to {to_email}!")
         except Exception as e:
-            print(f"Error sending missed class reminder: {e}")
+            self._log(f"❌ Error sending missed class reminder to {to_email}: {e}")
         finally:
             server.quit()
 
@@ -242,134 +252,196 @@ class FP_bot:
         for email in emails:
             if self.debug_mode:
                 name = self._get_student_name_by_email(email)
-                print(f"Sending summary reminder to {name} ({email}) for {date}")
+                self._log(f"Sending summary reminder to {name} ({email}) for {date}")
             else:
-                print(email, date)
+                self._log(f"Processing summary reminder for {email} on {date}")
                 self.send_email(email, date)
 
     def send_missed_class_reminders_loop(self, emails, date):
         for email in emails:
             if self.debug_mode:
                 name = self._get_student_name_by_email(email)
-                print(f"Sending missed class reminder to {name} ({email}) for {date}")
+                self._log(f"Sending missed class reminder to {name} ({email}) for {date}")
             else:
-                print(f"Sending missed class reminder to {email} for {date}")
+                self._log(f"Sending missed class reminder to {email} for {date}")
             self.send_missed_class_reminder(email, date)
 
-    def send_admin_summary(self, missed_class_emails, summary_reminder_emails):
+    def send_admin_summary(self, missed_class_emails=None, summary_reminder_emails=None):
         """
-        Send a summary email to the admin with details about all emails sent.
+        Send a summary email to the admin(s) with details about all emails sent and execution logs.
         
         This provides the admin with a complete overview of which students
-        received missed class reminders and summary reminders.
+        received missed class reminders and summary reminders, plus all execution logs.
+        Always sends, even if no emails were sent or if errors occurred.
+        
+        Supports multiple admin emails via comma-separated ADMIN_EMAIL env variable.
         """
-        admin_email = os.getenv('ADMIN_EMAIL')
-        if not admin_email:
-            print("⚠️ ADMIN_EMAIL not set in environment variables - skipping admin summary")
+        admin_email_str = os.getenv('ADMIN_EMAIL')
+        if not admin_email_str:
+            self._log("⚠️ ADMIN_EMAIL not set in environment variables - skipping admin summary")
             return
+        
+        # Parse admin emails - support comma-separated list
+        admin_emails = [email.strip() for email in admin_email_str.split(',') if email.strip()]
+        if not admin_emails:
+            self._log("⚠️ No valid admin emails found - skipping admin summary")
+            return
+        
+        # Default to empty lists if not provided
+        if missed_class_emails is None:
+            missed_class_emails = []
+        if summary_reminder_emails is None:
+            summary_reminder_emails = []
             
         from_email = os.getenv('FROM_EMAIL', "epc@meditationintelaviv.org")
         
-        subject = f"📊 סיכום שליחת הודעות - {self.this_week}"
+        # Use this_week if available, otherwise use current date
+        date_str = self.this_week if self.this_week else datetime.now().strftime("%Y-%m-%d")
+        subject = f"📊 FP Bot Email Summary - {date_str}"
         
-        # Build the summary content
-        summary_content = f"שלום,\n\nהנה סיכום שליחת ההודעות עבור {self.this_week}:\n\n"
+        # Build the summary content in English
+        summary_content = f"Hello,\n\nHere is the email sending summary for {date_str}:\n\n"
         
         # Missed class reminders section
-        summary_content += f"📧 הודעות על שיעור חסר ({self.this_week}): {len(missed_class_emails)}\n"
+        summary_content += f"📧 Missed class reminders ({date_str}): {len(missed_class_emails)}\n"
         if missed_class_emails:
             for email in missed_class_emails:
                 name = self._get_student_name_by_email(email)
                 summary_content += f"   - {name} ({email})\n"
         else:
-            summary_content += "   - אין תלמידים שפספסו את השיעור\n"
+            summary_content += "   - No students missed the class\n"
         
         summary_content += "\n"
         
-        # Summary reminders section
-        '''
-        summary_content += f"📧 תזכורות סיכום ({self.last_week}): {len(summary_reminder_emails)}\n"
+        # Summary reminders section (currently commented out in code)
+        summary_content += f"📧 Summary reminders ({self.last_week if self.last_week else 'N/A'}): {len(summary_reminder_emails)}\n"
         if summary_reminder_emails:
             for email in summary_reminder_emails:
                 name = self._get_student_name_by_email(email)
                 summary_content += f"   - {name} ({email})\n"
         else:
-            summary_content += "   - אין תלמידים שצריכים תזכורת לסיכום\n"
+            summary_content += "   - No students need summary reminders\n"
         
-        summary_content += f"\nסה\"כ הודעות שנשלחו: {len(missed_class_emails) + len(summary_reminder_emails)}\n\n"
-        summary_content += "בברכה,\nקדמפה בוט 🤖"
+        summary_content += f"\nTotal emails sent: {len(missed_class_emails) + len(summary_reminder_emails)}\n\n"
+        
+        # Add execution logs section
+        summary_content += "=" * 60 + "\n"
+        summary_content += "📋 Full Execution Logs:\n"
+        summary_content += "=" * 60 + "\n\n"
+        if self.logs:
+            for log_entry in self.logs:
+                summary_content += f"{log_entry}\n"
+        else:
+            summary_content += "No logs available\n"
+        
+        summary_content += "\n" + "=" * 60 + "\n"
+        summary_content += "Best regards,\nFP Kadampa Bot 🤖"
         
         if self.debug_mode:
-            print("=" * 60)
-            print("DEBUG MODE - ADMIN SUMMARY EMAIL")
-            print("=" * 60)
-            print(f"To: {admin_email}")
-            print(f"From: FP Kadampa TLV <{from_email}>")
-            print(f"Subject: {subject}")
-            print("-" * 40)
-            print("Body:")
-            print(summary_content)
-            print("=" * 60)
+            self._log("=" * 60)
+            self._log("DEBUG MODE - ADMIN SUMMARY EMAIL")
+            self._log("=" * 60)
+            self._log(f"To: {', '.join(admin_emails)}")
+            self._log(f"From: FP Kadampa TLV <{from_email}>")
+            self._log(f"Subject: {subject}")
+            self._log("-" * 40)
+            self._log("Body:")
+            self._log(summary_content)
+            self._log("=" * 60)
             return
-        '''
-        message = MIMEMultipart()
-        message["From"] = f"FP Kadampa TLV <{from_email}>"
-        message["To"] = admin_email
-        message["Subject"] = subject
-        message.attach(MIMEText(summary_content, "plain"))
         
-        try:
-            server = smtplib.SMTP("smtp.gmail.com", 587)
-            server.starttls()
-            server.login(from_email, os.getenv('GMAIL_PASSWORD'))
-            server.send_message(message)
-            print("Admin summary sent successfully!")
-        except Exception as e:
-            print(f"Error sending admin summary: {e}")
-        finally:
-            server.quit()
+        # Send email to all admin emails
+        success_count = 0
+        for admin_email in admin_emails:
+            try:
+                message = MIMEMultipart()
+                message["From"] = f"FP Kadampa TLV <{from_email}>"
+                message["To"] = admin_email
+                message["Subject"] = subject
+                message.attach(MIMEText(summary_content, "plain"))
+                
+                server = smtplib.SMTP("smtp.gmail.com", 587)
+                server.starttls()
+                server.login(from_email, os.getenv('GMAIL_PASSWORD'))
+                server.send_message(message)
+                server.quit()
+                success_count += 1
+                self._log(f"✅ Admin summary sent successfully to {admin_email}!")
+            except Exception as e:
+                self._log(f"❌ Error sending admin summary to {admin_email}: {e}")
+        
+        if success_count == len(admin_emails):
+            self._log(f"✅ Admin summary sent successfully to all {success_count} admin(s)!")
+        elif success_count > 0:
+            self._log(f"⚠️ Admin summary sent to {success_count} out of {len(admin_emails)} admin(s)")
+        else:
+            self._log(f"❌ Failed to send admin summary to any of the {len(admin_emails)} admin(s)")
 
     def run(self):
-        self.google_sheets_reading_date()
+        """
+        Main execution method. Always sends admin summary at the end, regardless of errors.
+        """
+        missed_class_emails = []
+        summary_reminder_emails = []
         
-        if self.debug_mode:
-            print(f"📅 Current week: {self.this_week}")
-            print(f"📅 Last week: {self.last_week}")
-            print()
-        
-        # Validate that there was a class in the last 7 days
-        if not self.validate_recent_class():
-            print("❌ There was no class in the last week, or I'm missing some data")
-            print("Last data is from: ", self.this_week)
-            return
-        
-        last_week_to_emails = list(set(self.missing_students_emails(self.last_week)) - set(self.completed_students_emails(self.last_week)))
-        this_week_missing_emails = self.missing_students_emails(self.this_week)
-
-        if self.debug_mode:
-            print(f"📧 Students who missed this week ({self.this_week}): {len(this_week_missing_emails)}")
-            if this_week_missing_emails:
-                for email in this_week_missing_emails:
-                    name = self._get_student_name_by_email(email)
-                    print(f"   - {name} ({email})")
-            print()
+        try:
+            self._log("🚀 Starting FP Bot execution...")
+            self.google_sheets_reading_date()
             
-            print(f"📧 Students who missed last week but haven't submitted summary: {len(last_week_to_emails)}")
-            if last_week_to_emails:
-                for email in last_week_to_emails:
-                    name = self._get_student_name_by_email(email)
-                    print(f"   - {name} ({email})")
-            print()
+            if self.debug_mode:
+                self._log(f"📅 Current week: {self.this_week}")
+                self._log(f"📅 Last week: {self.last_week}")
+                self._log("")
+            
+            # Validate that there was a class in the last 7 days
+            if not self.validate_recent_class():
+                self._log("❌ There was no class in the last week, or I'm missing some data")
+                self._log(f"Last data is from: {self.this_week}")
+                # Still send admin summary even if validation fails
+            else:
+                try:
+                    last_week_to_emails = list(set(self.missing_students_emails(self.last_week)) - set(self.completed_students_emails(self.last_week)))
+                    this_week_missing_emails = self.missing_students_emails(self.this_week)
+                    
+                    # Store for admin summary
+                    missed_class_emails = this_week_missing_emails
+                    summary_reminder_emails = last_week_to_emails
 
-        # Send missed class reminders (day after class) - no need to check if summary was submitted
-        self.send_missed_class_reminders_loop(this_week_missing_emails, self.this_week)
-        
-        
-        # Send summary reminders for last week (only to those who haven't submitted)
-        # self.send_emails_loop(last_week_to_emails, self.last_week)
-        
-        # Send admin summary after all student emails are sent
-        self.send_admin_summary(this_week_missing_emails, last_week_to_emails)
+                    if self.debug_mode:
+                        self._log(f"📧 Students who missed this week ({self.this_week}): {len(this_week_missing_emails)}")
+                        if this_week_missing_emails:
+                            for email in this_week_missing_emails:
+                                name = self._get_student_name_by_email(email)
+                                self._log(f"   - {name} ({email})")
+                        self._log("")
+                        
+                        self._log(f"📧 Students who missed last week but haven't submitted summary: {len(last_week_to_emails)}")
+                        if last_week_to_emails:
+                            for email in last_week_to_emails:
+                                name = self._get_student_name_by_email(email)
+                                self._log(f"   - {name} ({email})")
+                        self._log("")
+
+                    # Send missed class reminders (day after class) - no need to check if summary was submitted
+                    self.send_missed_class_reminders_loop(this_week_missing_emails, self.this_week)
+                    
+                    # Send summary reminders for last week (only to those who haven't submitted)
+                    # self.send_emails_loop(last_week_to_emails, self.last_week)
+                except Exception as e:
+                    self._log(f"❌ Error during email processing: {e}")
+                    self._log(f"Traceback: {traceback.format_exc()}")
+        except Exception as e:
+            self._log(f"❌ Critical error in run(): {e}")
+            self._log(f"Traceback: {traceback.format_exc()}")
+        finally:
+            # Always send admin summary, no matter what happened
+            self._log("📧 Sending admin summary email...")
+            try:
+                self.send_admin_summary(missed_class_emails, summary_reminder_emails)
+            except Exception as e:
+                self._log(f"❌ Failed to send admin summary: {e}")
+                # Last resort - try to print the error
+                print(f"CRITICAL: Could not send admin summary: {e}")
 
 
 if __name__ == "__main__":
