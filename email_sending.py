@@ -328,7 +328,7 @@ class FP_bot:
         else:
             summary_content += "   - No students need summary reminders\n"
         
-        summary_content += f"\nTotal emails sent: {len(missed_class_emails) + len(summary_reminder_emails)}\n\n"
+        summary_content += f"\nTotal emails to send: {len(missed_class_emails) + len(summary_reminder_emails)}\n\n"
         
         # Add execution logs section
         summary_content += "=" * 60 + "\n"
